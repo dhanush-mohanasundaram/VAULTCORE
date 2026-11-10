@@ -211,6 +211,17 @@ def test_concurrent_checkout_no_overselling():
     reset_rows()
     db = get_db()
     seed_roles_and_users(db)
+    # Each buyer gets their own account so carts never get mixed up.
+    buyers = []
+    for i in range(5):
+        email = f"concurrent buyer {i}@test.local".replace(" ", "")
+        u = models.User(email=email, hashed_password=hash_password("pw"), full_name=f"Buyer {i}", is_active=1)
+        db.add(u)
+        db.flush()
+        cr = db.query(models.Role).filter(models.Role.name == "customer").first()
+        db.add(models.UserRole(user_id=u.id, role_id=cr.id))
+        buyers.append((email, u.id))
+    db.commit()
     prod = models.Product(name="Rare", price="999.00", sku="SKU-RARE", is_active=1)
     db.add(prod)
     db.flush()
@@ -224,11 +235,10 @@ def test_concurrent_checkout_no_overselling():
 
     def buyer(n: int):
         c = TestClient(app)
-        def tlogin():
-            r = c.post("/api/auth/login", json={"email": "buyer@test.local", "password": "pw"})
-            assert r.status_code == 200, r.text
-            return r.json()["access_token"]
-        tok = tlogin()
+        email, _ = buyers[n]
+        r = c.post("/api/auth/login", json={"email": email, "password": "pw"})
+        assert r.status_code == 200, r.text
+        tok = r.json()["access_token"]
         c.post("/api/cart/", json={"product_id": prod_id, "quantity": 1}, headers=headers(tok))
         try:
             r = c.post(
