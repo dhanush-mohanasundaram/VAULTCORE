@@ -1,14 +1,14 @@
 import hashlib
-import os
 import time
 from datetime import datetime, timedelta, timezone
 
 import jwt
 from argon2 import PasswordHasher
+from app.config import settings
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 # Fail fast at startup if the secret is missing, too short, or still the default.
 if not SECRET_KEY:

@@ -2,19 +2,27 @@ from app import models
 from app.schemas import StatsOut
 
 
-def list_users(db):
-    return db.query(models.User).order_by(models.User.created_at.desc()).all()
+def list_users(db, limit=20, offset=0):
+    return (
+        db.query(models.User)
+        .order_by(models.User.created_at.desc())
+        .limit(min(max(limit, 1), 100))
+        .offset(max(offset, 0))
+        .all()
+    )
 
 
 def admin_list_products(db):
     return db.query(models.Product).order_by(models.Product.created_at.desc()).all()
 
 
-def admin_list_orders(db):
+def admin_list_orders(db, limit=20, offset=0):
     return (
         db.query(models.Order)
         .join(models.User, models.User.id == models.Order.user_id)
         .order_by(models.Order.created_at.desc())
+        .limit(min(max(limit, 1), 100))
+        .offset(max(offset, 0))
         .all()
     )
 

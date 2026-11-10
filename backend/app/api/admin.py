@@ -3,15 +3,19 @@ from app import schemas
 from app.services import admin_service
 from app.deps import get_db, get_current_user, require_role
 from sqlalchemy.orm import Session
-import os
+from app.config import settings
 
 router = APIRouter()
 
 
 @router.get("/users", response_model=list[schemas.UserOut])
-def list_users(db: Session = Depends(get_db), _admin = Depends(require_role("admin"))):
-    from app.services import auth_service
-    users = admin_service.list_users(db)
+def list_users(
+    db: Session = Depends(get_db),
+    _admin = Depends(require_role("admin")),
+    limit: int = 20,
+    offset: int = 0,
+):
+    users = admin_service.list_users(db, limit=min(max(limit, 1), 100), offset=max(offset, 0))
     result = []
     for u in users:
         roles = auth_service.get_user_role_names(db, u.id)
@@ -27,8 +31,13 @@ def admin_products(db: Session = Depends(get_db), _admin = Depends(require_role(
 
 
 @router.get("/orders", response_model=list[schemas.AdminOrderOut])
-def admin_orders(db: Session = Depends(get_db), _admin = Depends(require_role("admin"))):
-    orders = admin_service.admin_list_orders(db)
+def admin_orders(
+    db: Session = Depends(get_db),
+    _admin = Depends(require_role("admin")),
+    limit: int = 20,
+    offset: int = 0,
+):
+    orders = admin_service.admin_list_orders(db, limit=min(max(limit, 1), 100), offset=max(offset, 0))
     result = []
     for o in orders:
         result.append(
@@ -68,7 +77,7 @@ def stats(db: Session = Depends(get_db), _admin = Depends(require_role("admin"))
 def low_stock(db: Session = Depends(get_db), _admin = Depends(require_role("admin"))):
     from app.api.products import product_out
     from app.services import product_service
-    threshold = int(os.getenv("VAULTCORE_LOW_STOCK_THRESHOLD", "5"))
+    threshold = settings.LOW_STOCK_THRESHOLD
     rows = product_service.list_low_stock(db, threshold=threshold)
     return [product_out(db, r.product) for r in rows]
 
