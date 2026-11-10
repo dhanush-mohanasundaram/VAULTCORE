@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 9713a3f5e645
+Revision ID: db86c7a03a80
 Revises: 
-Create Date: 2026-11-10 16:02:07.503646
+Create Date: 2026-11-10 20:41:18.303147
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '9713a3f5e645'
+revision = 'db86c7a03a80'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -60,26 +60,27 @@ def upgrade():
     op.create_table('orders',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
-    sa.Column('status', sa.String(length=50), nullable=False),
-    sa.Column('total', sa.Numeric(precision=10, scale=2), nullable=False),
-    sa.Column('idempotency_key', sa.String(length=255), nullable=True),
+    sa.Column('status', sa.String(length=20), nullable=False),
+    sa.Column('total', sa.Numeric(precision=12, scale=2), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.CheckConstraint('total >= 0', name='ck_order_total_non_negative'),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_orders_id'), 'orders', ['id'], unique=False)
-    op.create_index(op.f('ix_orders_idempotency_key'), 'orders', ['idempotency_key'], unique=True)
+    op.create_index('ix_orders_user_created', 'orders', ['user_id', 'created_at'], unique=False)
     op.create_index(op.f('ix_orders_user_id'), 'orders', ['user_id'], unique=False)
     op.create_table('products',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('category_id', sa.Integer(), nullable=True),
     sa.Column('name', sa.String(length=200), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('price', sa.Numeric(precision=10, scale=2), nullable=False),
+    sa.Column('price', sa.Numeric(precision=12, scale=2), nullable=False),
     sa.Column('sku', sa.String(length=100), nullable=True),
     sa.Column('is_active', sa.Integer(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.CheckConstraint('price >= 0', name='ck_product_price_non_negative'),
     sa.ForeignKeyConstraint(['category_id'], ['categories.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -116,14 +117,18 @@ def upgrade():
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('key', sa.String(length=255), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('request_body_hash', sa.String(length=64), nullable=False),
     sa.Column('order_id', sa.Integer(), nullable=True),
+    sa.Column('response_status_code', sa.Integer(), nullable=False),
+    sa.Column('response_body', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['order_id'], ['orders.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('user_id', 'key', name='uq_idempotency_user_key')
     )
     op.create_index(op.f('ix_idempotency_keys_id'), 'idempotency_keys', ['id'], unique=False)
-    op.create_index(op.f('ix_idempotency_keys_key'), 'idempotency_keys', ['key'], unique=True)
+    op.create_index(op.f('ix_idempotency_keys_key'), 'idempotency_keys', ['key'], unique=False)
     op.create_index(op.f('ix_idempotency_keys_user_id'), 'idempotency_keys', ['user_id'], unique=False)
     op.create_table('inventory',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -140,7 +145,7 @@ def upgrade():
     sa.Column('order_id', sa.Integer(), nullable=False),
     sa.Column('product_id', sa.Integer(), nullable=False),
     sa.Column('quantity', sa.Integer(), nullable=False),
-    sa.Column('unit_price', sa.Numeric(precision=10, scale=2), nullable=False),
+    sa.Column('unit_price', sa.Numeric(precision=12, scale=2), nullable=False),
     sa.ForeignKeyConstraint(['order_id'], ['orders.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['product_id'], ['products.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
@@ -178,7 +183,7 @@ def downgrade():
     op.drop_index(op.f('ix_products_category_id'), table_name='products')
     op.drop_table('products')
     op.drop_index(op.f('ix_orders_user_id'), table_name='orders')
-    op.drop_index(op.f('ix_orders_idempotency_key'), table_name='orders')
+    op.drop_index('ix_orders_user_created', table_name='orders')
     op.drop_index(op.f('ix_orders_id'), table_name='orders')
     op.drop_table('orders')
     op.drop_index(op.f('ix_carts_user_id'), table_name='carts')

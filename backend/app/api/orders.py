@@ -14,7 +14,7 @@ def checkout(
     current_user = Depends(get_current_user),
 ):
     try:
-        order = order_service.checkout(db, current_user, data.idempotency_key)
+        order = order_service.checkout(db, current_user, data.idempotency_key, data.model_dump())
     except HTTPException:
         raise
     except Exception as exc:

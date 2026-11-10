@@ -9,6 +9,7 @@ from sqlalchemy import (
     UniqueConstraint,
     CheckConstraint,
     func,
+    Index,
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -71,10 +72,14 @@ class Product(Base):
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True)
     name = Column(String(200), nullable=False, index=True)
     description = Column(Text, nullable=True)
-    price = Column(Numeric(10, 2), nullable=False)
+    price = Column(Numeric(12, 2), nullable=False)  # Money stored as NUMERIC(12,2), never float
     sku = Column(String(100), unique=True, nullable=True, index=True)
     is_active = Column(Integer, default=1, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("price >= 0", name="ck_product_price_non_negative"),
+    )
 
     category = relationship("Category", back_populates="products")
     inventory = relationship("Inventory", back_populates="product", uselist=False)
@@ -125,11 +130,16 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    status = Column(String(50), nullable=False, default="pending")
-    total = Column(Numeric(10, 2), nullable=False)
-    idempotency_key = Column(String(255), unique=True, nullable=True, index=True)
+    status = Column(String(20), nullable=False, default="pending")  # pending | paid | shipped | completed | cancelled
+    total = Column(Numeric(12, 2), nullable=False)  # Money stored as NUMERIC(12,2), never float
+    # NOTE: idempotency_key column removed — idempotency lives in the idempotency_keys table (UNIQUE user_id, key)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_orders_user_created", "user_id", "created_at"),
+        CheckConstraint("total >= 0", name="ck_order_total_non_negative"),
+    )
 
     user = relationship("User", back_populates="orders")
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
@@ -142,7 +152,7 @@ class OrderItem(Base):
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
     quantity = Column(Integer, nullable=False)
-    unit_price = Column(Numeric(10, 2), nullable=False)
+    unit_price = Column(Numeric(12, 2), nullable=False)  # Snapshot of product price at checkout time
 
     order = relationship("Order", back_populates="items")
     product = relationship("Product", back_populates="order_items")
@@ -152,7 +162,14 @@ class IdempotencyKey(Base):
     __tablename__ = "idempotency_keys"
 
     id = Column(Integer, primary_key=True, index=True)
-    key = Column(String(255), unique=True, nullable=False, index=True)
+    key = Column(String(255), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    request_body_hash = Column(String(64), nullable=False)  # SHA-256 hex digest of the request body
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    response_status_code = Column(Integer, nullable=False)
+    response_body = Column(Text, nullable=True)  # JSON string of the response returned
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "key", name="uq_idempotency_user_key"),
+    )
