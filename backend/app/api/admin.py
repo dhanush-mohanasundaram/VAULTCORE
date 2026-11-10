@@ -3,6 +3,7 @@ from app import schemas
 from app.services import admin_service
 from app.deps import get_db, get_current_user, require_role
 from sqlalchemy.orm import Session
+import os
 
 router = APIRouter()
 
@@ -67,5 +68,24 @@ def stats(db: Session = Depends(get_db), _admin = Depends(require_role("admin"))
 def low_stock(db: Session = Depends(get_db), _admin = Depends(require_role("admin"))):
     from app.api.products import product_out
     from app.services import product_service
-    rows = product_service.list_low_stock(db)
+    threshold = int(os.getenv("VAULTCORE_LOW_STOCK_THRESHOLD", "5"))
+    rows = product_service.list_low_stock(db, threshold=threshold)
     return [product_out(db, r.product) for r in rows]
+
+
+@router.post("/inventory/adjust", response_model=schemas.ProductOut)
+def adjust_inventory(
+    product_id: int = Body(...),
+    quantity: int = Body(...),
+    reason: str | None = Body(None),
+    db: Session = Depends(get_db),
+    _admin = Depends(require_role("admin")),
+    current_user = Depends(get_current_user),
+):
+    from app.api.products import product_out
+    inv = product_service.adjust_inventory(
+        db, product_id, quantity,
+        changed_by_user_id=current_user.id,
+        reason=reason,
+    )
+    return product_out(db, inv.product)

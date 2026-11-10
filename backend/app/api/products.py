@@ -26,8 +26,14 @@ def product_out(db: Session, p: models.Product) -> schemas.ProductOut:
 
 
 @router.get("", response_model=list[schemas.ProductOut])
-def list_products(db: Session = Depends(get_db), category_id: int | None = None):
-    products = product_service.list_products(db, category_id=category_id)
+def list_products(
+    db: Session = Depends(get_db),
+    category_id: int | None = None,
+    search: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+):
+    products = product_service.list_products(db, category_id=category_id, search=search, limit=limit, offset=offset)
     return [product_out(db, p) for p in products]
 
 

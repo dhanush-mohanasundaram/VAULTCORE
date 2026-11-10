@@ -2,13 +2,20 @@ from app import models
 from app.schemas import ProductCreate, ProductUpdate
 
 
-def list_products(db, category_id=None, active_only=True):
-    q = db.query(models.Product)
+def list_products(db, category_id=None, active_only=True, search=None, limit=20, offset=0):
+    limit = min(max(limit, 1), 100)
+    offset = max(offset, 0)
+    query = db.query(models.Product)
     if active_only:
-        q = q.filter(models.Product.is_active == 1)
+        query = query.filter(models.Product.is_active == 1)
     if category_id is not None:
-        q = q.filter(models.Product.category_id == category_id)
-    return q.all()
+        query = query.filter(models.Product.category_id == category_id)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            models.Product.name.ilike(like) | models.Product.description.ilike(like)
+        )
+    return query.order_by(models.Product.id).limit(limit).offset(offset).all()
 
 
 def get_product(db, product_id: int):
@@ -61,26 +68,33 @@ def delete_product(db, product_id: int) -> bool:
     product = get_product(db, product_id)
     if not product:
         return False
-    inv = db.query(models.Inventory).filter(models.Inventory.product_id == product_id).first()
-    if inv:
-        db.delete(inv)
-    db.delete(product)
+    # Soft delete: keep order/cart history intact, just hide from catalog.
+    product.is_active = 0
     db.commit()
+    db.refresh(product)
     return True
 
 
-def adjust_inventory(db, product_id: int, quantity: int, set_absolute: bool = False):
+def adjust_inventory(db, product_id: int, quantity: int, changed_by_user_id: int | None = None, reason: str | None = None):
     inv = db.query(models.Inventory).filter(models.Inventory.product_id == product_id).first()
     if not inv:
         inv = models.Inventory(product_id=product_id, quantity=0)
         db.add(inv)
         db.flush()
-    if set_absolute:
-        inv.quantity = quantity
-    else:
-        inv.quantity = (inv.quantity or 0) + quantity
-    if inv.quantity < 0:
-        inv.quantity = 0
+    previous = inv.quantity or 0
+    new_qty = previous + quantity
+    if new_qty < 0:
+        new_qty = 0
+    inv.quantity = new_qty
+    db.add(
+        models.InventoryAuditLog(
+            product_id=product_id,
+            changed_by_user_id=changed_by_user_id,
+            previous_quantity=previous,
+            new_quantity=new_qty,
+            reason=reason,
+        )
+    )
     db.commit()
     db.refresh(inv)
     return inv
