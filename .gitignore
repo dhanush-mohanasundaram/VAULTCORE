@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+*.env
+*.log
+uv_add.log
+backend_server.log
+frontend_server.log
+.venv/
+__pycache__/
+*.pyc
+.vscode/
+*.db
+*.sqlite3
