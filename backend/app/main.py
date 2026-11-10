@@ -1,13 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 from app.api import auth, products, cart, orders, admin
 
 app = FastAPI(title="VAULTCORE — Secure Transaction-Safe E-Commerce API")
 
+# CORS origins from config. No wildcard origin when credentials are enabled.
+_cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

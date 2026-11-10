@@ -1,12 +1,24 @@
+import hashlib
+import os
+import time
 from datetime import datetime, timedelta, timezone
-from jose import jwt
-from passlib.context import CryptContext
 
-SECRET_KEY = os_get_secret = __import__("os").getenv("SECRET_KEY", "dev-secret-change-me")
+import jwt
+from argon2 import PasswordHasher
+
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(__import__("os").getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+# Fail fast at startup if the secret is missing, too short, or still the default.
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY environment variable is required")
+if len(SECRET_KEY) < 32:
+    raise RuntimeError("SECRET_KEY must be at least 32 characters")
+if SECRET_KEY in ("dev-secret-change-me", "change-me-in-production", "secret"):
+    raise RuntimeError("SECRET_KEY must not be a default value")
+
+pwd_context = PasswordHasher()
 
 
 def hash_password(password: str) -> str:
@@ -14,7 +26,10 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return pwd_context.verify(hashed_password, plain_password)
+    except Exception:
+        return False
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
@@ -27,5 +42,36 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 def decode_token(token: str) -> dict | None:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except Exception:
+    except jwt.PyJWTError:
         return None
+
+
+# Simple in-process login rate limiter: per (ip, email) pair.
+# Stores timestamps of failed attempts; blocks after 5 failures within 300 seconds.
+_LOGIN_ATTEMPTS: dict[tuple[str, str], list[float]] = {}
+_LOGIN_LIMIT = 5
+_LOGIN_WINDOW = 300  # seconds
+
+
+def register_login_attempt(identifier: str, success: bool) -> None:
+    now = time.time()
+    key = identifier
+    attempts = _LOGIN_ATTEMPTS.get(key, [])
+    attempts = [t for t in attempts if now - t < _LOGIN_WINDOW]
+    if not success:
+        attempts.append(now)
+    _LOGIN_ATTEMPTS[key] = attempts
+
+
+def is_login_rate_limited(identifier: str) -> bool:
+    now = time.time()
+    attempts = _LOGIN_ATTEMPTS.get(identifier, [])
+    attempts = [t for t in attempts if now - t < _LOGIN_WINDOW]
+    _LOGIN_ATTEMPTS[identifier] = attempts
+    return len(attempts) >= _LOGIN_LIMIT
+
+
+def login_rate_limit_key(client_host: str | None, email: str) -> str:
+    host = client_host or "unknown"
+    email_hash = hashlib.sha256(email.lower().encode()).hexdigest()[:16]
+    return f"login:{host}:{email_hash}"

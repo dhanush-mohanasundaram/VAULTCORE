@@ -44,8 +44,8 @@ def seed_roles_and_users(db: Session):
     customer_role = db.query(models.Role).filter(models.Role.name == "customer").first()
     admin_role = db.query(models.Role).filter(models.Role.name == "admin").first()
 
-    cust = models.User(email="buyer@test.local", hashed_password=hash_password("pw"), full_name="Buyer", is_active=1)
-    adm = models.User(email="admin@test.local", hashed_password=hash_password("pw"), full_name="Admin", is_active=1)
+    cust = models.User(email="buyer@test.local", hashed_password=hash_password("password1234"), full_name="Buyer", is_active=1)
+    adm = models.User(email="admin@test.local", hashed_password=hash_password("password1234"), full_name="Admin", is_active=1)
     db.add_all([cust, adm])
     db.flush()
     db.add_all([
@@ -57,7 +57,7 @@ def seed_roles_and_users(db: Session):
     return cust, adm
 
 
-def login(email: str = "buyer@test.local", password: str = "pw"):
+def login(email: str = "buyer@test.local", password: str = "password1234"):
     r = client.post("/api/auth/login", json={"email": email, "password": password})
     assert r.status_code == 200, r.text
     return r.json()["access_token"]
@@ -75,15 +75,15 @@ def test_register_and_login():
 
     r = client.post(
         "/api/auth/register",
-        json={"email": "newbie@test.local", "password": "secret", "full_name": "Newbie"},
+        json={"email": "newbie@test.local", "password": "secret1234", "full_name": "Newbie"},
     )
     assert r.status_code == 200, r.text
     assert r.json()["roles"] == ["customer"]
 
-    r = client.post("/api/auth/register", json={"email": "newbie@test.local", "password": "secret"})
+    r = client.post("/api/auth/register", json={"email": "newbie@test.local", "password": "secret1234"})
     assert r.status_code == 400
 
-    token = login("newbie@test.local", "secret")
+    token = login("newbie@test.local", "secret1234")
     r = client.get("/api/auth/me", headers=headers(token))
     assert r.status_code == 200
     assert r.json()["email"] == "newbie@test.local"
@@ -99,8 +99,8 @@ def test_products_and_admin_rbac():
     cust, adm = seed_roles_and_users(db)
     db.close()
 
-    cust_token = login("buyer@test.local", "pw")
-    adm_token = login("admin@test.local", "pw")
+    cust_token = login("buyer@test.local", "password1234")
+    adm_token = login("admin@test.local", "password1234")
 
     # customer cannot create products
     r = client.post(
@@ -215,7 +215,7 @@ def test_concurrent_checkout_no_overselling():
     buyers = []
     for i in range(5):
         email = f"concurrent buyer {i}@test.local".replace(" ", "")
-        u = models.User(email=email, hashed_password=hash_password("pw"), full_name=f"Buyer {i}", is_active=1)
+        u = models.User(email=email, hashed_password=hash_password("password1234"), full_name=f"Buyer {i}", is_active=1)
         db.add(u)
         db.flush()
         cr = db.query(models.Role).filter(models.Role.name == "customer").first()
@@ -236,7 +236,7 @@ def test_concurrent_checkout_no_overselling():
     def buyer(n: int):
         c = TestClient(app)
         email, _ = buyers[n]
-        r = c.post("/api/auth/login", json={"email": email, "password": "pw"})
+        r = c.post("/api/auth/login", json={"email": email, "password": "password1234"})
         assert r.status_code == 200, r.text
         tok = r.json()["access_token"]
         c.post("/api/cart/", json={"product_id": prod_id, "quantity": 1}, headers=headers(tok))
@@ -289,7 +289,7 @@ def test_admin_stats_and_low_stock():
     db.commit()
     db.close()
 
-    token = login("admin@test.local", "pw")
+    token = login("admin@test.local", "password1234")
     r = client.get("/api/admin/stats", headers=headers(token))
     assert r.status_code == 200, r.text
     s = r.json()
@@ -302,6 +302,6 @@ def test_admin_stats_and_low_stock():
     assert r.status_code == 200 and len(r.json()) == 2
 
     # customer forbidden
-    ctok = login("buyer@test.local", "pw")
+    ctok = login("buyer@test.local", "password1234")
     r = client.get("/api/admin/stats", headers=headers(ctok))
     assert r.status_code == 403
