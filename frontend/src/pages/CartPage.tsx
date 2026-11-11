@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { api, type CartItem } from "../lib/api"
 
@@ -6,29 +6,64 @@ export default function CartPage() {
   const [cart, setCart] = useState<{ items: CartItem[]; total: string }>({ items: [], total: "0.00" })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [inFlight, setInFlight] = useState<Set<number>>(new Set())
   const navigate = useNavigate()
 
   useEffect(() => {
     loadCart()
   }, [])
 
-  const loadCart = () => {
-    api.getCart().then(setCart).catch((err) => setError(err.message)).finally(() => setLoading(false))
+  const loadCart = async () => {
+    setLoading(true)
+    try {
+      const data = await api.getCart()
+      setCart(data)
+    } catch (err: any) {
+      setError(err.message || "Failed to load cart")
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const updateQty = (productId: number, qty: number) => {
+  const updateQty = async (productId: number, qty: number) => {
     if (qty < 0) return
-    api.updateCartItem(productId, qty).then(setCart).catch((err) => setError(err.message))
+    setInFlight((prev) => new Set([...prev, productId]))
+    try {
+      const data = await api.updateCartItem(productId, qty)
+      setCart(data)
+    } catch (err: any) {
+      setError(err.message || "Failed to update quantity")
+    } finally {
+      setInFlight((prev) => {
+        const next = new Set(prev)
+        next.delete(productId)
+        return next
+      })
+    }
   }
 
-  const remove = (productId: number) => {
-    api.removeFromCart(productId).then(setCart).catch((err) => setError(err.message))
+  const remove = async (productId: number) => {
+    setInFlight((prev) => new Set([...prev, productId]))
+    try {
+      const data = await api.removeFromCart(productId)
+      setCart(data)
+    } catch (err: any) {
+      setError(err.message || "Failed to remove item")
+    } finally {
+      setInFlight((prev) => {
+        const next = new Set(prev)
+        next.delete(productId)
+        return next
+      })
+    }
   }
 
   const checkout = async () => {
     const key = `vc-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    sessionStorage.setItem("vc_idem_key", key)
     try {
       const order = await api.checkout(key)
+      sessionStorage.removeItem("vc_idem_key")
       navigate(`/orders/${order.id}`)
     } catch (err: any) {
       setError(err.message || "Checkout failed")
@@ -71,15 +106,17 @@ export default function CartPage() {
                         type="number"
                         min="0"
                         value={item.quantity}
+                        disabled={inFlight.has(item.product_id)}
                         onChange={(e) => updateQty(item.product_id, Number(e.target.value || 0))}
-                        className="w-16 px-2 py-1 border border-gray-300 rounded-md text-center outline-none"
+                        className="w-16 px-2 py-1 border border-gray-300 rounded-md text-center outline-none disabled:opacity-50"
                       />
                     </td>
                     <td className="px-4 py-3 text-right">₹{item.subtotal}</td>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => remove(item.product_id)}
-                        className="text-sm text-red-600 hover:text-red-800"
+                        disabled={inFlight.has(item.product_id)}
+                        className="text-sm text-red-600 hover:text-red-800 disabled:opacity-50"
                       >
                         Remove
                       </button>
@@ -95,7 +132,8 @@ export default function CartPage() {
               </div>
               <button
                 onClick={checkout}
-                className="px-6 py-2 bg-indigo-600 text-white rounded-md font-medium hover:bg-indigo-700"
+                disabled={cart.items.length === 0}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-md font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Proceed to checkout
               </button>

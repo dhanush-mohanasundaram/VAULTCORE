@@ -1,21 +1,33 @@
-import { useState } from "react"
-import { Link } from "react-router-dom"
+import { useState, useEffect } from "react"
+import { Link, useNavigate } from "react-router-dom"
 import { api, type Order } from "../lib/api"
 
+const IDEM_KEY_STORAGE_KEY = "vc_idem_key"
+
 export default function CheckoutPage() {
-  const [key, setKey] = useState(`vc-${Date.now()}`)
+  const [key, setKey] = useState(() => {
+    const stored = sessionStorage.getItem(IDEM_KEY_STORAGE_KEY)
+    return stored || `vc-${Date.now()}`
+  })
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState("")
   const [order, setOrder] = useState<Order | null>(null)
+
+  useEffect(() => {
+    sessionStorage.setItem(IDEM_KEY_STORAGE_KEY, key)
+  }, [key])
+
   const placeOrder = async () => {
     setProcessing(true)
     setError("")
     try {
       const o = await api.checkout(key)
+      sessionStorage.removeItem(IDEM_KEY_STORAGE_KEY)
       setOrder(o)
     } catch (err: any) {
       setError(err.message || "Checkout failed")
-      setKey(`vc-${Date.now()}`)
+      // Generate a new key so the user can retry
+      setKey(`vc-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     } finally {
       setProcessing(false)
     }
@@ -58,13 +70,15 @@ export default function CheckoutPage() {
               readOnly
             />
             <button
-              onClick={() => setKey(`vc-${Date.now()}`)}
+              onClick={() => setKey(`vc-${Date.now()}-${Math.random().toString(36).slice(2)}`)}
               className="px-3 py-2 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
             >
               New key
             </button>
           </div>
-          <p className="text-xs text-gray-500">Duplicate requests with the same key return the same order.</p>
+          <p className="text-xs text-gray-500">
+            Duplicate requests with the same key return the same order — safe to retry.
+          </p>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button
             onClick={placeOrder}
@@ -75,7 +89,9 @@ export default function CheckoutPage() {
           </button>
         </div>
       </div>
-      <Link to="/cart" className="mt-4 inline-block text-indigo-600 hover:text-indigo-500">← Back to cart</Link>
+      <Link to="/cart" className="mt-4 inline-block text-indigo-600 hover:text-indigo-500">
+        ← Back to cart
+      </Link>
     </div>
   )
 }

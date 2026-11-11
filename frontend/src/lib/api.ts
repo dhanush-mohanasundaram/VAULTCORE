@@ -1,6 +1,22 @@
 /// <reference types="vite/client" />
 const API_BASE = import.meta.env.VITE_API_BASE || ""
 
+export class ApiError extends Error {
+  status: number
+  code: string
+  request_id?: string
+  details?: unknown
+
+  constructor(status: number, message: string, code?: string, request_id?: string, details?: unknown) {
+    super(message)
+    this.status = status
+    this.code = code || `http_${status}`
+    this.request_id = request_id
+    this.details = details
+    this.name = "ApiError"
+  }
+}
+
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("token")
   return token ? { Authorization: `Bearer ${token}` } : {}
@@ -28,7 +44,24 @@ export type Stats = { total_customers: number; total_products: number; total_ord
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => "")
-    throw new Error(text || `Request failed (${res.status})`)
+    let message = text || `Request failed (${res.status})`
+    let code = `http_${res.status}`
+    let request_id: string | undefined
+    let details: unknown
+    try {
+      const parsed = JSON.parse(text)
+      if (parsed.error) {
+        message = parsed.error.message || message
+        code = parsed.error.code || code
+        request_id = parsed.error.request_id
+        details = parsed.error.details
+      } else {
+        message = parsed.message || message
+      }
+    } catch {
+      // non-JSON error body; use raw text
+    }
+    throw new ApiError(res.status, message, code, request_id, details)
   }
   return (await res.json()) as T
 }

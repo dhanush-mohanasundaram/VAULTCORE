@@ -37,3 +37,16 @@
 
 ### Phase 6 — Docs/CI/Release (planned)
 - README, ADRs, RUNBOOK, SECURITY, INTERVIEW_NOTES, PowerShell scripts, GitHub Actions, v1.0.0 tag
+
+### Phase 5 — Frontend (done)
+- Strict TypeScript, no `any` types in API client
+- Typed API client module with structured error handling (ApiError class)
+- Product catalog with server-side search, pagination (limit/offset, default 20, max 100)
+- Cart page with in-flight disable on quantity/remove buttons, idempotency key in sessionStorage
+- Checkout page with sessionStorage idempotency key, retry with new key, duplicate request protection
+- Admin dashboard with stats, low-stock alerts, order management
+- Admin product management with create form
+- Admin order management with status update (state machine enforced)
+- Admin product form with validation
+- Navbar with JWT-based admin detection (decodes JWT for UI-only gating; backend enforces RBAC)
+- Tests: Vitest + React Testing Library for API client, cart page, checkout page
