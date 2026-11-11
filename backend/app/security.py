@@ -1,4 +1,5 @@
 import hashlib
+import json
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -75,3 +76,7 @@ def login_rate_limit_key(client_host: str | None, email: str) -> str:
     host = client_host or "unknown"
     email_hash = hashlib.sha256(email.lower().encode()).hexdigest()[:16]
     return f"login:{host}:{email_hash}"
+
+
+def _hash_body(body: dict | None) -> str:
+    return hashlib.sha256(json.dumps(body or {}, sort_keys=True).encode()).hexdigest()
